@@ -18,6 +18,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
+    ResponsesAgentOutputItem,
     ResponsesAgentRequest,
     ResponsesAgentResponse,
     ResponsesAgentStreamEvent,
@@ -395,7 +396,6 @@ async def non_streaming(request: ResponsesAgentRequest) -> ResponsesAgentRespons
         if msg_role == 'assistant' and msg_name not in ['sales_agent', 'stock_agent', 'reps_agent', 'fallback_agent', REASONING]:
             content = get_msg_attr(msg, 'content', '')
             if content and not content.startswith('<n>'):
-                from mlflow.types.responses import ResponsesAgentOutputItem
                 outputs.append(ResponsesAgentOutputItem(
                     type="text",
                     content=content,

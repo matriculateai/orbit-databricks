@@ -24,3 +24,8 @@ env:
     value: "01f0f692a05414b4a070316fe4cd3323"
   - name: ORBIT_LLM_ENDPOINT
     value: "databricks-gemma-3-12b"
+  # Dashboard URLs - Replace these with your actual Databricks dashboard embed URLs
+  - name: ORBIT_REP_MANAGER_DASHBOARD_URL
+    value: "YOUR_REP_MANAGER_DASHBOARD_URL_HERE"
+  - name: ORBIT_EXEC_DASHBOARD_URL
+    value: "YOUR_EXEC_DASHBOARD_URL_HERE"
