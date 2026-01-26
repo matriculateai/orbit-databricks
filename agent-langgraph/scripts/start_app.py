@@ -144,6 +144,9 @@ class ProcessManager:
                 env_extra={
                     "FRONTEND_PORT": str(FRONTEND_PORT),
                     "BACKEND_URL": f"http://localhost:{BACKEND_PORT}/invocations",
+                    # Pass through dashboard URLs from app.yaml
+                    "ORBIT_REP_MANAGER_DASHBOARD_URL": os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_URL", ""),
+                    "ORBIT_EXEC_DASHBOARD_URL": os.environ.get("ORBIT_EXEC_DASHBOARD_URL", ""),
                 },
             )
 
