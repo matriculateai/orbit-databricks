@@ -1,5 +1,6 @@
 import os
 
+import uvicorn
 from dotenv import load_dotenv
 from mlflow.genai.agent_server import AgentServer, setup_mlflow_git_based_version_tracking
 
@@ -20,4 +21,4 @@ setup_mlflow_git_based_version_tracking()
 def main():
     # Backend runs on port 8001 (frontend on 8000 handles external traffic)
     port = int(os.environ.get("BACKEND_PORT", "8001"))
-    agent_server.run(app_import_string="agent_server.start_server:app", port=port)
+    uvicorn.run("agent_server.start_server:app", host="0.0.0.0", port=port)
