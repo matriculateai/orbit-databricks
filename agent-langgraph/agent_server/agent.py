@@ -187,11 +187,19 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
             if not messages:
                 return state
 
-            # Find the last assistant message and tag it
+            # Find the last message and tag it if it's from an AI/assistant
             last_msg = messages[-1]
-            msg_role = get_msg_attr(last_msg, 'role')
+            msg_type = type(last_msg).__name__
 
-            if msg_role == 'assistant':
+            logger.info(f"DEBUG: Tagger {agent_name} processing message type: {msg_type}")
+
+            # Check if this is an AI message (either AIMessage or dict with role='assistant')
+            is_ai_message = (
+                msg_type == 'AIMessage' or
+                (isinstance(last_msg, dict) and last_msg.get('role') == 'assistant')
+            )
+
+            if is_ai_message:
                 # Create a new message dict with the name attribute
                 if isinstance(last_msg, dict):
                     tagged_msg = last_msg.copy()
@@ -199,20 +207,23 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
                 else:
                     # Convert message object to dict
                     tagged_msg = {
-                        'role': msg_role,
+                        'role': 'assistant',
                         'content': get_msg_attr(last_msg, 'content', ''),
                         'name': agent_name
                     }
                     # Preserve other attributes
-                    for attr in ['id', 'tool_calls', 'tool_call_id']:
+                    for attr in ['id', 'tool_calls', 'tool_call_id', 'additional_kwargs', 'response_metadata']:
                         if hasattr(last_msg, attr):
-                            tagged_msg[attr] = getattr(last_msg, attr)
+                            attr_value = getattr(last_msg, attr)
+                            if attr_value:  # Only include non-empty values
+                                tagged_msg[attr] = attr_value
 
                 # Replace the last message with the tagged version
                 new_messages = messages[:-1] + [tagged_msg]
-                logger.info(f"DEBUG: Tagged message from {agent_name}")
+                logger.info(f"DEBUG: Tagged message from {agent_name}, original name was: {get_msg_attr(last_msg, 'name')}")
                 return {"messages": new_messages}
 
+            logger.warning(f"DEBUG: Tagger {agent_name} skipped tagging - not an AI message")
             return state
 
         return tagger_node
