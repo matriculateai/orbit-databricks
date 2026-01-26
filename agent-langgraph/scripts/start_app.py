@@ -8,6 +8,7 @@ Requirements:
 3. Printing error logs if either process fails
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -16,6 +17,12 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Port configuration
+# Frontend runs on 8000 (Databricks Apps exposed port)
+# Backend runs on 8001 (internal only)
+FRONTEND_PORT = 8000
+BACKEND_PORT = 8001
 
 # Readiness patterns
 BACKEND_READY = [r"Uvicorn running on", r"Application startup complete", r"Started server process"]
@@ -66,10 +73,13 @@ class ProcessManager:
             print(f"Error monitoring {name}: {e}")
             self.failed.set()
 
-    def start_process(self, cmd, name, log_file, patterns, cwd=None):
+    def start_process(self, cmd, name, log_file, patterns, cwd=None, env_extra=None):
         print(f"Starting {name}...")
+        env = os.environ.copy()
+        if env_extra:
+            env.update(env_extra)
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env
         )
 
         thread = threading.Thread(
@@ -114,12 +124,16 @@ class ProcessManager:
         self.frontend_log = open("frontend.log", "w", buffering=1)
 
         try:
-            # Start backend
+            # Start backend on port 8001 (internal)
             self.backend_process = self.start_process(
-                ["uv", "run", "start-server"], "backend", self.backend_log, BACKEND_READY
+                ["uv", "run", "start-server"],
+                "backend",
+                self.backend_log,
+                BACKEND_READY,
+                env_extra={"BACKEND_PORT": str(BACKEND_PORT)},
             )
 
-            # Start custom Orbit frontend (no npm build required)
+            # Start frontend on port 8000 (exposed by Databricks Apps)
             frontend_dir = Path(__file__).parent.parent / "frontend"
             self.frontend_process = self.start_process(
                 ["python", "server.py"],
@@ -127,6 +141,10 @@ class ProcessManager:
                 self.frontend_log,
                 FRONTEND_READY,
                 cwd=frontend_dir,
+                env_extra={
+                    "FRONTEND_PORT": str(FRONTEND_PORT),
+                    "BACKEND_URL": f"http://localhost:{BACKEND_PORT}/invocations",
+                },
             )
 
             print(

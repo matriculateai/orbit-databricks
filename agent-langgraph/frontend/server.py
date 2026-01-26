@@ -15,8 +15,10 @@ from urllib.error import HTTPError, URLError
 
 
 # Configuration
-FRONTEND_PORT = int(os.environ.get("CHAT_APP_PORT", "3000"))
-BACKEND_URL = os.environ.get("API_PROXY", "http://localhost:8000/invocations")
+# Frontend runs on port 8000 (Databricks Apps exposed port)
+# Backend runs on port 8001 (internal)
+FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", "8000"))
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001/invocations")
 REP_MANAGER_DASHBOARD_URL = os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_URL", "")
 EXEC_DASHBOARD_URL = os.environ.get("ORBIT_EXEC_DASHBOARD_URL", "")
 
