@@ -13,14 +13,27 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+# Databricks SDK for token minting
+try:
+    from databricks.sdk import WorkspaceClient
+    HAS_DATABRICKS_SDK = True
+except ImportError:
+    HAS_DATABRICKS_SDK = False
+
 
 # Configuration
 # Frontend runs on port 8000 (Databricks Apps exposed port)
 # Backend runs on port 8001 (internal)
 FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", "8000"))
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001/invocations")
-REP_MANAGER_DASHBOARD_URL = os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_URL", "")
-EXEC_DASHBOARD_URL = os.environ.get("ORBIT_EXEC_DASHBOARD_URL", "")
+
+# Databricks configuration
+DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST", "https://dbc-2dd00323-bb3d.cloud.databricks.com")
+WORKSPACE_ID = os.environ.get("DATABRICKS_WORKSPACE_ID", "1691211321770811")
+
+# Dashboard IDs (not URLs)
+REP_MANAGER_DASHBOARD_ID = os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_ID", "")
+EXEC_DASHBOARD_ID = os.environ.get("ORBIT_EXEC_DASHBOARD_ID", "")
 
 
 class OrbitHandler(SimpleHTTPRequestHandler):
@@ -45,16 +58,54 @@ class OrbitHandler(SimpleHTTPRequestHandler):
         """Handle POST requests."""
         if self.path == "/api/chat":
             self.handle_chat()
+        elif self.path == "/api/dashboard-token":
+            self.handle_dashboard_token()
         else:
             self.send_error(404, "Not Found")
 
     def send_config(self):
         """Send configuration to frontend."""
         config = {
-            "repManagerDashboardUrl": REP_MANAGER_DASHBOARD_URL,
-            "execDashboardUrl": EXEC_DASHBOARD_URL,
+            "databricksHost": DATABRICKS_HOST,
+            "workspaceId": WORKSPACE_ID,
+            "repManagerDashboardId": REP_MANAGER_DASHBOARD_ID,
+            "execDashboardId": EXEC_DASHBOARD_ID,
         }
         self.send_json_response(config)
+
+    def handle_dashboard_token(self):
+        """Mint a token for dashboard embedding."""
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body) if body else {}
+
+            dashboard_id = data.get("dashboardId")
+            if not dashboard_id:
+                self.send_json_response({"error": "dashboardId required"}, status=400)
+                return
+
+            if not HAS_DATABRICKS_SDK:
+                self.send_json_response({"error": "Databricks SDK not available"}, status=500)
+                return
+
+            # Use the Databricks SDK to get an embed token
+            # The WorkspaceClient uses the ambient credentials from the environment
+            w = WorkspaceClient()
+
+            # Get embed credentials for the dashboard
+            # This uses the current user's credentials to generate an embed token
+            embed_creds = w.lakeview.get_published_dashboard_embed_credentials(dashboard_id=dashboard_id)
+
+            self.send_json_response({
+                "token": embed_creds.embed_token,
+            })
+
+        except Exception as e:
+            print(f"[Error] Dashboard token error: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            sys.stdout.flush()
+            self.send_json_response({"error": str(e)}, status=500)
 
     def handle_chat(self):
         """Proxy chat requests to backend agent."""
@@ -186,6 +237,7 @@ def main():
     httpd = HTTPServer(server_address, OrbitHandler)
     print(f"Server is running on http://localhost:{FRONTEND_PORT}")
     print(f"Backend API: {BACKEND_URL}")
+    print(f"Databricks SDK available: {HAS_DATABRICKS_SDK}")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

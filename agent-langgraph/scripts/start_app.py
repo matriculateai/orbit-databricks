@@ -144,9 +144,12 @@ class ProcessManager:
                 env_extra={
                     "FRONTEND_PORT": str(FRONTEND_PORT),
                     "BACKEND_URL": f"http://localhost:{BACKEND_PORT}/invocations",
-                    # Pass through dashboard URLs from app.yaml
-                    "ORBIT_REP_MANAGER_DASHBOARD_URL": os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_URL", ""),
-                    "ORBIT_EXEC_DASHBOARD_URL": os.environ.get("ORBIT_EXEC_DASHBOARD_URL", ""),
+                    # Databricks configuration for dashboard embedding
+                    "DATABRICKS_HOST": os.environ.get("DATABRICKS_HOST", ""),
+                    "DATABRICKS_WORKSPACE_ID": os.environ.get("DATABRICKS_WORKSPACE_ID", ""),
+                    # Dashboard IDs for AIBI client
+                    "ORBIT_REP_MANAGER_DASHBOARD_ID": os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_ID", ""),
+                    "ORBIT_EXEC_DASHBOARD_ID": os.environ.get("ORBIT_EXEC_DASHBOARD_ID", ""),
                 },
             )
 

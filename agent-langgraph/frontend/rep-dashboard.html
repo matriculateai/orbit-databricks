@@ -8,6 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@latest/dist/aibi-client.min.js"></script>
+    <script type="module">
+        import { DatabricksDashboard } from "https://esm.sh/@databricks/aibi-client";
+        window.DatabricksDashboard = DatabricksDashboard;
+    </script>
 </head>
 <body>
     <div class="app-container">
@@ -73,24 +78,10 @@
                     <p>Sales representative performance and activity metrics</p>
                 </div>
 
-                <div class="dashboard-frame-container" id="rep-dashboard-container">
-                    <div class="dashboard-placeholder" id="rep-placeholder">
-                        <svg class="placeholder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                            <circle cx="9" cy="7" r="4"/>
-                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                        </svg>
-                        <h3>Rep Manager Dashboard</h3>
-                        <p id="status-text">Loading...</p>
-                        <a id="dashboard-link" href="#" target="_blank" class="dashboard-button hidden">
-                            Open Dashboard
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                                <polyline points="15 3 21 3 21 9"/>
-                                <line x1="10" y1="14" x2="21" y2="3"/>
-                            </svg>
-                        </a>
+                <div class="dashboard-frame-container" id="dashboard-container">
+                    <div class="dashboard-loading" id="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p id="status-text">Loading dashboard...</p>
                     </div>
                 </div>
             </div>
@@ -98,51 +89,85 @@
     </div>
 
     <style>
-        .dashboard-button {
-            display: inline-flex;
+        .dashboard-loading {
+            display: flex;
+            flex-direction: column;
             align-items: center;
-            gap: 8px;
-            margin-top: 24px;
-            padding: 12px 24px;
-            background: var(--accent-gradient);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-weight: 500;
-            transition: all 0.2s ease;
+            justify-content: center;
+            gap: 16px;
+            padding: 60px 20px;
+            height: 100%;
         }
-        .dashboard-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #dashboard-container {
+            min-height: 600px;
         }
     </style>
 
-    <script>
-        async function loadDashboard() {
+    <script type="module">
+        async function initDashboard() {
+            const container = document.getElementById('dashboard-container');
+            const loadingState = document.getElementById('loading-state');
             const statusText = document.getElementById('status-text');
-            const dashboardLink = document.getElementById('dashboard-link');
 
             try {
-                const response = await fetch('/api/config');
-                if (!response.ok) throw new Error('Config API failed');
+                // Get config and token from server
+                statusText.textContent = 'Fetching configuration...';
+                const configResponse = await fetch('/api/config');
+                if (!configResponse.ok) throw new Error('Failed to fetch config');
+                const config = await configResponse.json();
 
-                const config = await response.json();
-                const url = config.repManagerDashboardUrl;
-
-                if (!url || url === 'YOUR_REP_MANAGER_DASHBOARD_URL_HERE' || url === '') {
-                    statusText.textContent = 'Dashboard URL not configured in app.yaml';
-                } else {
-                    statusText.textContent = 'Click below to open the dashboard in a new tab';
-                    dashboardLink.href = url;
-                    dashboardLink.classList.remove('hidden');
+                const dashboardId = config.repManagerDashboardId;
+                if (!dashboardId) {
+                    statusText.textContent = 'Dashboard ID not configured in app.yaml';
+                    return;
                 }
+
+                // Get embed token from server
+                statusText.textContent = 'Authenticating...';
+                const tokenResponse = await fetch('/api/dashboard-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dashboardId })
+                });
+                if (!tokenResponse.ok) throw new Error('Failed to get dashboard token');
+                const tokenData = await tokenResponse.json();
+
+                // Initialize dashboard
+                statusText.textContent = 'Initializing dashboard...';
+
+                const { DatabricksDashboard } = await import("https://esm.sh/@databricks/aibi-client");
+
+                // Clear loading state
+                loadingState.remove();
+
+                const dashboard = new DatabricksDashboard({
+                    instanceUrl: config.databricksHost,
+                    workspaceId: config.workspaceId,
+                    dashboardId: dashboardId,
+                    token: tokenData.token,
+                    container: container,
+                });
+
+                await dashboard.initialize();
+
             } catch (error) {
-                console.error('Error loading config:', error);
-                statusText.textContent = 'Failed to load configuration';
+                console.error('Dashboard initialization error:', error);
+                statusText.textContent = `Error: ${error.message}`;
             }
         }
 
-        loadDashboard();
+        initDashboard();
     </script>
 </body>
 </html>
