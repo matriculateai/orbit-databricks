@@ -83,22 +83,52 @@ class OrbitHandler(SimpleHTTPRequestHandler):
             with urlopen(req, timeout=300) as response:
                 result = json.loads(response.read().decode("utf-8"))
 
-            # Extract response text from MLflow format
+            # Debug: log the raw response structure
+            print(f"[Debug] Backend response keys: {result.keys()}")
+
+            # Extract response text from MLflow Responses API format
             response_text = ""
-            if "output" in result:
-                for item in result["output"]:
-                    if item.get("type") == "text":
-                        response_text = item.get("content", "")
-                        break
-            elif "content" in result:
+
+            # Try multiple extraction methods
+            if "output" in result and result["output"]:
+                output_items = result["output"]
+                print(f"[Debug] Output items count: {len(output_items)}")
+
+                # Collect all text content from output items
+                text_parts = []
+                for item in output_items:
+                    # Handle both dict and object-like items
+                    item_type = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+                    item_content = item.get("content") if isinstance(item, dict) else getattr(item, "content", None)
+
+                    print(f"[Debug] Item type: {item_type}, content preview: {str(item_content)[:100] if item_content else 'None'}")
+
+                    if item_type == "text" and item_content:
+                        # Skip internal markers
+                        if not item_content.startswith("<n>") and not item_content.startswith("__ORBIT_"):
+                            text_parts.append(item_content)
+
+                response_text = "\n".join(text_parts) if text_parts else ""
+
+            # Fallback: check for direct content field
+            if not response_text and "content" in result:
                 response_text = result["content"]
-            else:
-                response_text = str(result)
+
+            # Fallback: check for message field
+            if not response_text and "message" in result:
+                response_text = result["message"]
+
+            # Last resort: stringify the result
+            if not response_text:
+                print(f"[Debug] No response text found, full result: {json.dumps(result, default=str)[:500]}")
+                response_text = "I processed your request but couldn't generate a response. Please try again."
 
             # Extract updated context
             new_context = None
             if "custom_outputs" in result:
                 new_context = result["custom_outputs"].get("context")
+
+            print(f"[Debug] Final response length: {len(response_text)}")
 
             # Send response
             self.send_json_response({
