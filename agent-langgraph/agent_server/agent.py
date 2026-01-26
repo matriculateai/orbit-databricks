@@ -402,8 +402,12 @@ async def non_streaming(request: ResponsesAgentRequest) -> ResponsesAgentRespons
     for msg in messages:
         msg_role = get_msg_attr(msg, 'role')
         msg_name = get_msg_attr(msg, 'name')
-        
-        if msg_role == 'assistant' and msg_name not in ['sales_agent', 'stock_agent', 'reps_agent', 'fallback_agent', REASONING]:
+
+        # Include assistant messages that are either:
+        # 1. From the reasoning agent (final synthesized response)
+        # 2. Unnamed (from supervisor direct responses like greetings)
+        # 3. From Genie agents (when no reasoning step needed)
+        if msg_role == 'assistant':
             content = get_msg_attr(msg, 'content', '')
             if content and not content.startswith('<n>'):
                 outputs.append(ResponsesAgentOutputItem(
