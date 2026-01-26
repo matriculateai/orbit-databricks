@@ -148,58 +148,8 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
     
     llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
 
-    # Helper function to wrap agents and ensure message name attribution
-    def create_named_agent_wrapper(base_agent, agent_name: str):
-        """Wraps an agent to ensure all output messages have the correct name attribute."""
-        def wrapped_agent(state: OrbitState):
-            # Get the number of messages before calling the agent
-            input_message_count = len(state.get("messages", []))
-
-            # Call the base agent
-            result = base_agent.invoke(state)
-
-            # Get all messages from the result
-            all_messages = result.get("messages", [])
-
-            # Extract only the NEW messages created by this agent
-            new_messages = all_messages[input_message_count:]
-
-            # Update new messages with proper name attributes
-            updated_new_messages = []
-            for msg in new_messages:
-                msg_role = get_msg_attr(msg, 'role')
-
-                # For assistant messages from this agent, ensure name is set
-                if msg_role == 'assistant':
-                    # Create a new message dict with the name attribute
-                    if isinstance(msg, dict):
-                        new_msg = msg.copy()
-                        new_msg['name'] = agent_name
-                        updated_new_messages.append(new_msg)
-                    else:
-                        # For message objects, try to create a dict representation
-                        msg_dict = {
-                            'role': msg_role,
-                            'content': get_msg_attr(msg, 'content', ''),
-                            'name': agent_name
-                        }
-                        # Preserve other attributes if they exist
-                        for attr in ['id', 'tool_calls', 'tool_call_id']:
-                            if hasattr(msg, attr):
-                                msg_dict[attr] = getattr(msg, attr)
-                        updated_new_messages.append(msg_dict)
-                else:
-                    updated_new_messages.append(msg)
-
-            logger.info(f"DEBUG: Agent {agent_name} created {len(updated_new_messages)} new messages")
-
-            # Return updated state with only the NEW messages (LangGraph will append them)
-            return {"messages": updated_new_messages}
-
-        return wrapped_agent
-
-    # Initialize base Genie agents
-    base_genie_agents = {
+    # Initialize Genie agents (without wrapping - use them directly)
+    genie_agents = {
         "sales_agent": GenieAgent(
             genie_space_id=GENIE_SPACES["sales"],
             genie_agent_name="sales_agent",
@@ -222,24 +172,55 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
         ),
     }
 
-    # Wrap all Genie agents to ensure message name attribution
-    genie_agents = {
-        name: create_named_agent_wrapper(agent, name)
-        for name, agent in base_genie_agents.items()
-    }
-    
-    # Initialize and wrap reasoning agent
-    base_reasoning_agent = create_react_agent(
+    # Initialize reasoning agent (without wrapping)
+    reasoning_agent = create_react_agent(
         model=ChatDatabricks(endpoint=LLM_ENDPOINT_NAME),
         tools=[],
         name=REASONING,
     )
-    reasoning_agent = create_named_agent_wrapper(base_reasoning_agent, REASONING)
-    
+
+    # Create tagger nodes to add name attributes after agents execute
+    def create_message_tagger(agent_name: str):
+        """Creates a node that tags the last assistant message with the agent name."""
+        def tagger_node(state: OrbitState):
+            messages = state.get("messages", [])
+            if not messages:
+                return state
+
+            # Find the last assistant message and tag it
+            last_msg = messages[-1]
+            msg_role = get_msg_attr(last_msg, 'role')
+
+            if msg_role == 'assistant':
+                # Create a new message dict with the name attribute
+                if isinstance(last_msg, dict):
+                    tagged_msg = last_msg.copy()
+                    tagged_msg['name'] = agent_name
+                else:
+                    # Convert message object to dict
+                    tagged_msg = {
+                        'role': msg_role,
+                        'content': get_msg_attr(last_msg, 'content', ''),
+                        'name': agent_name
+                    }
+                    # Preserve other attributes
+                    for attr in ['id', 'tool_calls', 'tool_call_id']:
+                        if hasattr(last_msg, attr):
+                            tagged_msg[attr] = getattr(last_msg, attr)
+
+                # Replace the last message with the tagged version
+                new_messages = messages[:-1] + [tagged_msg]
+                logger.info(f"DEBUG: Tagged message from {agent_name}")
+                return {"messages": new_messages}
+
+            return state
+
+        return tagger_node
+
     # Agent descriptions for prompting
     agent_descriptions = "\n".join([
         f"- **{name}**: {agent.description}"
-        for name, agent in base_genie_agents.items()
+        for name, agent in genie_agents.items()
     ])
     
     # Define supervisor routing logic
@@ -404,20 +385,28 @@ For example:
         
         return Command(goto=target_agent, update={"context": context})
     
-    # Build graph
+    # Build graph with tagger nodes
     workflow = StateGraph(OrbitState)
     workflow.add_node(SUPERVISOR, supervisor_node)
-    
+
+    # Add Genie agents and their tagger nodes
     for name, agent in genie_agents.items():
         workflow.add_node(name, agent)
-    
+        tagger_name = f"{name}_tagger"
+        workflow.add_node(tagger_name, create_message_tagger(name))
+        # Route: agent -> tagger -> supervisor
+        workflow.add_edge(name, tagger_name)
+        workflow.add_edge(tagger_name, SUPERVISOR)
+
+    # Add reasoning agent and its tagger
     workflow.add_node(REASONING, reasoning_agent)
-    
+    reasoning_tagger = f"{REASONING}_tagger"
+    workflow.add_node(reasoning_tagger, create_message_tagger(REASONING))
+    workflow.add_edge(REASONING, reasoning_tagger)
+    workflow.add_edge(reasoning_tagger, SUPERVISOR)
+
     workflow.add_edge(START, SUPERVISOR)
-    for name in genie_agents.keys():
-        workflow.add_edge(name, SUPERVISOR)
-    workflow.add_edge(REASONING, SUPERVISOR)
-    
+
     return workflow.compile()
 
 
