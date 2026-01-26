@@ -18,13 +18,23 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 from mlflow.genai.agent_server import invoke, stream
 from mlflow.types.responses import (
-    ResponsesAgentOutputItem,
     ResponsesAgentRequest,
     ResponsesAgentResponse,
     ResponsesAgentStreamEvent,
     output_to_responses_items_stream,
     to_chat_completions_input,
 )
+
+# ResponsesAgentOutputItem may not be available in all MLflow versions
+try:
+    from mlflow.types.responses import ResponsesAgentOutputItem
+except ImportError:
+    # Fallback: create a simple class that mimics the expected structure
+    class ResponsesAgentOutputItem:
+        def __init__(self, type: str, content: str, id: str):
+            self.type = type
+            self.content = content
+            self.id = id
 from pydantic import BaseModel, Field
 
 from agent_server.utils import (
