@@ -151,22 +151,51 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
     # Helper function to wrap agents and ensure message name attribution
     def create_named_agent_wrapper(base_agent, agent_name: str):
         """Wraps an agent to ensure all output messages have the correct name attribute."""
-        def wrapped_agent(state: OrbitState) -> OrbitState:
+        def wrapped_agent(state: OrbitState):
+            # Get the number of messages before calling the agent
+            input_message_count = len(state.get("messages", []))
+
+            # Call the base agent
             result = base_agent.invoke(state)
 
-            # Ensure all messages from this agent have the correct name attribute
-            messages = result.get("messages", [])
-            if isinstance(messages, list):
-                for msg in messages:
-                    msg_role = get_msg_attr(msg, 'role')
-                    if msg_role == 'assistant':
-                        # Set the name attribute
-                        if hasattr(msg, 'name'):
-                            msg.name = agent_name
-                        elif isinstance(msg, dict):
-                            msg['name'] = agent_name
+            # Get all messages from the result
+            all_messages = result.get("messages", [])
 
-            return result
+            # Extract only the NEW messages created by this agent
+            new_messages = all_messages[input_message_count:]
+
+            # Update new messages with proper name attributes
+            updated_new_messages = []
+            for msg in new_messages:
+                msg_role = get_msg_attr(msg, 'role')
+
+                # For assistant messages from this agent, ensure name is set
+                if msg_role == 'assistant':
+                    # Create a new message dict with the name attribute
+                    if isinstance(msg, dict):
+                        new_msg = msg.copy()
+                        new_msg['name'] = agent_name
+                        updated_new_messages.append(new_msg)
+                    else:
+                        # For message objects, try to create a dict representation
+                        msg_dict = {
+                            'role': msg_role,
+                            'content': get_msg_attr(msg, 'content', ''),
+                            'name': agent_name
+                        }
+                        # Preserve other attributes if they exist
+                        for attr in ['id', 'tool_calls', 'tool_call_id']:
+                            if hasattr(msg, attr):
+                                msg_dict[attr] = getattr(msg, attr)
+                        updated_new_messages.append(msg_dict)
+                else:
+                    updated_new_messages.append(msg)
+
+            logger.info(f"DEBUG: Agent {agent_name} created {len(updated_new_messages)} new messages")
+
+            # Return updated state with only the NEW messages (LangGraph will append them)
+            return {"messages": updated_new_messages}
+
         return wrapped_agent
 
     # Initialize base Genie agents
@@ -235,7 +264,10 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
         # Handle returns from workers (don't increment turn)
         msg_name = get_msg_attr(last_message, 'name')
         genie_agent_names = ["sales_agent", "stock_agent", "reps_agent", "fallback_agent"]
-        
+
+        # Debug logging
+        logger.info(f"DEBUG: last_message type: {type(last_message)}, msg_name: {msg_name}, role: {get_msg_attr(last_message, 'role')}")
+
         if msg_name in genie_agent_names:
             context["last_agent_used"] = msg_name
             return Command(
