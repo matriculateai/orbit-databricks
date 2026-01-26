@@ -6,6 +6,8 @@ Serves static files and proxies API requests to the backend agent.
 
 import json
 import os
+import sys
+import traceback
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -85,6 +87,7 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
             # Debug: log the raw response structure
             print(f"[Debug] Backend response keys: {result.keys()}")
+            sys.stdout.flush()
 
             # Extract response text from MLflow Responses API format
             response_text = ""
@@ -138,19 +141,24 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
         except HTTPError as e:
             error_body = e.read().decode("utf-8") if e.fp else str(e)
-            print(f"Backend error: {e.code} - {error_body}")
+            print(f"[Error] Backend HTTP error: {e.code} - {error_body}")
+            sys.stdout.flush()
             self.send_json_response(
                 {"error": f"Backend error: {e.code}", "response": "I encountered an error processing your request."},
                 status=500,
             )
         except URLError as e:
-            print(f"Connection error: {e}")
+            print(f"[Error] Connection error: {e}")
+            traceback.print_exc()
+            sys.stdout.flush()
             self.send_json_response(
                 {"error": "Backend unavailable", "response": "The backend service is currently unavailable."},
                 status=503,
             )
         except Exception as e:
-            print(f"Error handling chat: {e}")
+            print(f"[Error] Exception in handle_chat: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            sys.stdout.flush()
             self.send_json_response(
                 {"error": str(e), "response": "An unexpected error occurred."},
                 status=500,
