@@ -24,3 +24,13 @@ env:
     value: "01f0f692a05414b4a070316fe4cd3323"
   - name: ORBIT_LLM_ENDPOINT
     value: "databricks-gemma-3-12b"
+  # Databricks workspace configuration for dashboard embedding
+  - name: DATABRICKS_HOST
+    value: "https://dbc-2dd00323-bb3d.cloud.databricks.com"
+  - name: DATABRICKS_WORKSPACE_ID
+    value: "1691211321770811"
+  # Dashboard IDs for AIBI client embedding
+  - name: ORBIT_REP_MANAGER_DASHBOARD_ID
+    value: "YOUR_REP_MANAGER_DASHBOARD_ID_HERE"
+  - name: ORBIT_EXEC_DASHBOARD_ID
+    value: "YOUR_EXEC_DASHBOARD_ID_HERE"

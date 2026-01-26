@@ -24,6 +24,17 @@ from mlflow.types.responses import (
     output_to_responses_items_stream,
     to_chat_completions_input,
 )
+
+# ResponsesAgentOutputItem may not be available in all MLflow versions
+try:
+    from mlflow.types.responses import ResponsesAgentOutputItem
+except ImportError:
+    # Fallback: create a simple class that mimics the expected structure
+    class ResponsesAgentOutputItem:
+        def __init__(self, type: str, content: str, id: str):
+            self.type = type
+            self.content = content
+            self.id = id
 from pydantic import BaseModel, Field
 
 from agent_server.utils import (
@@ -391,11 +402,14 @@ async def non_streaming(request: ResponsesAgentRequest) -> ResponsesAgentRespons
     for msg in messages:
         msg_role = get_msg_attr(msg, 'role')
         msg_name = get_msg_attr(msg, 'name')
-        
-        if msg_role == 'assistant' and msg_name not in ['sales_agent', 'stock_agent', 'reps_agent', 'fallback_agent', REASONING]:
+
+        # Include assistant messages that are either:
+        # 1. From the reasoning agent (final synthesized response)
+        # 2. Unnamed (from supervisor direct responses like greetings)
+        # 3. From Genie agents (when no reasoning step needed)
+        if msg_role == 'assistant':
             content = get_msg_attr(msg, 'content', '')
             if content and not content.startswith('<n>'):
-                from mlflow.types.responses import ResponsesAgentOutputItem
                 outputs.append(ResponsesAgentOutputItem(
                     type="text",
                     content=content,

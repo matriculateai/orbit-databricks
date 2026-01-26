@@ -8,8 +8,8 @@ Requirements:
 3. Printing error logs if either process fails
 """
 
+import os
 import re
-import shutil
 import subprocess
 import sys
 import threading
@@ -17,6 +17,12 @@ import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Port configuration
+# Frontend runs on 8000 (Databricks Apps exposed port)
+# Backend runs on 8001 (internal only)
+FRONTEND_PORT = 8000
+BACKEND_PORT = 8001
 
 # Readiness patterns
 BACKEND_READY = [r"Uvicorn running on", r"Application startup complete", r"Started server process"]
@@ -56,7 +62,7 @@ class ProcessManager:
                     if self.backend_ready and self.frontend_ready:
                         print("\n" + "=" * 50)
                         print("✓ Both frontend and backend are ready!")
-                        print("✓ Open the frontend at http://localhost:8000")
+                        print("✓ Orbit is running at http://localhost:8000")
                         print("=" * 50 + "\n")
 
             process.wait()
@@ -67,44 +73,13 @@ class ProcessManager:
             print(f"Error monitoring {name}: {e}")
             self.failed.set()
 
-    def clone_frontend_if_needed(self):
-        if Path("e2e-chatbot-app-next").exists():
-            return True
-
-        print("Cloning e2e-chatbot-app-next...")
-        for url in [
-            "https://github.com/databricks/app-templates.git",
-            "git@github.com:databricks/app-templates.git",
-        ]:
-            try:
-                subprocess.run(
-                    ["git", "clone", "--filter=blob:none", "--sparse", url, "temp-app-templates"],
-                    check=True,
-                    capture_output=True,
-                )
-                break
-            except subprocess.CalledProcessError:
-                continue
-        else:
-            print("ERROR: Failed to clone repository.")
-            print(
-                "Manually download from: https://download-directory.github.io/?url=https://github.com/databricks/app-templates/tree/main/e2e-chatbot-app-next"
-            )
-            return False
-
-        subprocess.run(
-            ["git", "sparse-checkout", "set", "e2e-chatbot-app-next"],
-            cwd="temp-app-templates",
-            check=True,
-        )
-        Path("temp-app-templates/e2e-chatbot-app-next").rename("e2e-chatbot-app-next")
-        shutil.rmtree("temp-app-templates", ignore_errors=True)
-        return True
-
-    def start_process(self, cmd, name, log_file, patterns, cwd=None):
+    def start_process(self, cmd, name, log_file, patterns, cwd=None, env_extra=None):
         print(f"Starting {name}...")
+        env = os.environ.copy()
+        if env_extra:
+            env.update(env_extra)
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, cwd=cwd, env=env
         )
 
         thread = threading.Thread(
@@ -144,36 +119,38 @@ class ProcessManager:
     def run(self):
         load_dotenv(dotenv_path=".env.local", override=True)
 
-        if not self.clone_frontend_if_needed():
-            return 1
-
         # Open log files
         self.backend_log = open("backend.log", "w", buffering=1)
         self.frontend_log = open("frontend.log", "w", buffering=1)
 
         try:
-            # Start backend
+            # Start backend on port 8001 (internal)
             self.backend_process = self.start_process(
-                ["uv", "run", "start-server"], "backend", self.backend_log, BACKEND_READY
+                ["uv", "run", "start-server"],
+                "backend",
+                self.backend_log,
+                BACKEND_READY,
+                env_extra={"BACKEND_PORT": str(BACKEND_PORT)},
             )
 
-            # Setup and start frontend
-            frontend_dir = Path("e2e-chatbot-app-next")
-            for cmd, desc in [("npm install", "install"), ("npm run build", "build")]:
-                print(f"Running npm {desc}...")
-                result = subprocess.run(
-                    cmd.split(), cwd=frontend_dir, capture_output=True, text=True
-                )
-                if result.returncode != 0:
-                    print(f"npm {desc} failed: {result.stderr}")
-                    return 1
-
+            # Start frontend on port 8000 (exposed by Databricks Apps)
+            frontend_dir = Path(__file__).parent.parent / "frontend"
             self.frontend_process = self.start_process(
-                ["npm", "run", "start"],
+                ["python", "server.py"],
                 "frontend",
                 self.frontend_log,
                 FRONTEND_READY,
                 cwd=frontend_dir,
+                env_extra={
+                    "FRONTEND_PORT": str(FRONTEND_PORT),
+                    "BACKEND_URL": f"http://localhost:{BACKEND_PORT}/invocations",
+                    # Databricks configuration for dashboard embedding
+                    "DATABRICKS_HOST": os.environ.get("DATABRICKS_HOST", ""),
+                    "DATABRICKS_WORKSPACE_ID": os.environ.get("DATABRICKS_WORKSPACE_ID", ""),
+                    # Dashboard IDs for AIBI client
+                    "ORBIT_REP_MANAGER_DASHBOARD_ID": os.environ.get("ORBIT_REP_MANAGER_DASHBOARD_ID", ""),
+                    "ORBIT_EXEC_DASHBOARD_ID": os.environ.get("ORBIT_EXEC_DASHBOARD_ID", ""),
+                },
             )
 
             print(

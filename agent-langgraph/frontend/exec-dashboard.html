@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Executive Dashboard | Orbit</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module">
+        import { DatabricksDashboard } from "https://esm.sh/@databricks/aibi-client";
+        window.DatabricksDashboard = DatabricksDashboard;
+    </script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="20" cy="20" r="18" stroke="url(#orbit-gradient)" stroke-width="2.5" fill="none"/>
+                        <circle cx="20" cy="20" r="8" fill="url(#orbit-gradient)"/>
+                        <circle cx="20" cy="6" r="3" fill="#6366f1"/>
+                        <defs>
+                            <linearGradient id="orbit-gradient" x1="0" y1="0" x2="40" y2="40">
+                                <stop offset="0%" stop-color="#6366f1"/>
+                                <stop offset="100%" stop-color="#8b5cf6"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                    <span class="logo-text">Orbit</span>
+                </div>
+            </div>
+
+            <div class="nav-section">
+                <a href="/" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>Chat</span>
+                </a>
+                <a href="/rep-dashboard.html" class="nav-item">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                    <span>Rep Manager</span>
+                </a>
+                <a href="/exec-dashboard.html" class="nav-item active">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18"/>
+                        <path d="M18 17V9"/>
+                        <path d="M13 17V5"/>
+                        <path d="M8 17v-3"/>
+                    </svg>
+                    <span>Executive</span>
+                </a>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="powered-by">
+                    <span class="powered-text">Powered by</span>
+                    <span class="senture-brand">Senture</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="dashboard-container">
+                <div class="dashboard-header">
+                    <h1>Executive Dashboard</h1>
+                    <p>High-level business metrics and strategic insights</p>
+                </div>
+
+                <div class="dashboard-frame-container" id="dashboard-container">
+                    <div class="dashboard-loading" id="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p id="status-text">Loading dashboard...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <style>
+        .dashboard-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 60px 20px;
+            height: 100%;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #dashboard-container {
+            min-height: 600px;
+        }
+    </style>
+
+    <script type="module">
+        async function initDashboard() {
+            const container = document.getElementById('dashboard-container');
+            const loadingState = document.getElementById('loading-state');
+            const statusText = document.getElementById('status-text');
+
+            try {
+                // Get config and token from server
+                statusText.textContent = 'Fetching configuration...';
+                const configResponse = await fetch('/api/config');
+                if (!configResponse.ok) throw new Error('Failed to fetch config');
+                const config = await configResponse.json();
+
+                const dashboardId = config.execDashboardId;
+                if (!dashboardId) {
+                    statusText.textContent = 'Dashboard ID not configured in app.yaml';
+                    return;
+                }
+
+                // Get embed token from server
+                statusText.textContent = 'Authenticating...';
+                const tokenResponse = await fetch('/api/dashboard-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dashboardId })
+                });
+                if (!tokenResponse.ok) throw new Error('Failed to get dashboard token');
+                const tokenData = await tokenResponse.json();
+
+                // Initialize dashboard
+                statusText.textContent = 'Initializing dashboard...';
+
+                const { DatabricksDashboard } = await import("https://esm.sh/@databricks/aibi-client");
+
+                // Clear loading state
+                loadingState.remove();
+
+                const dashboard = new DatabricksDashboard({
+                    instanceUrl: config.databricksHost,
+                    workspaceId: config.workspaceId,
+                    dashboardId: dashboardId,
+                    token: tokenData.token,
+                    container: container,
+                });
+
+                await dashboard.initialize();
+
+            } catch (error) {
+                console.error('Dashboard initialization error:', error);
+                statusText.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        initDashboard();
+    </script>
+</body>
+</html>
