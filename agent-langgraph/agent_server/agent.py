@@ -147,9 +147,30 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
     """
     
     llm = ChatDatabricks(endpoint=LLM_ENDPOINT_NAME)
-    
-    # Initialize Genie agents
-    genie_agents = {
+
+    # Helper function to wrap agents and ensure message name attribution
+    def create_named_agent_wrapper(base_agent, agent_name: str):
+        """Wraps an agent to ensure all output messages have the correct name attribute."""
+        def wrapped_agent(state: OrbitState) -> OrbitState:
+            result = base_agent.invoke(state)
+
+            # Ensure all messages from this agent have the correct name attribute
+            messages = result.get("messages", [])
+            if isinstance(messages, list):
+                for msg in messages:
+                    msg_role = get_msg_attr(msg, 'role')
+                    if msg_role == 'assistant':
+                        # Set the name attribute
+                        if hasattr(msg, 'name'):
+                            msg.name = agent_name
+                        elif isinstance(msg, dict):
+                            msg['name'] = agent_name
+
+            return result
+        return wrapped_agent
+
+    # Initialize base Genie agents
+    base_genie_agents = {
         "sales_agent": GenieAgent(
             genie_space_id=GENIE_SPACES["sales"],
             genie_agent_name="sales_agent",
@@ -171,38 +192,25 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
             description="Handles complex queries spanning multiple domains.",
         ),
     }
+
+    # Wrap all Genie agents to ensure message name attribution
+    genie_agents = {
+        name: create_named_agent_wrapper(agent, name)
+        for name, agent in base_genie_agents.items()
+    }
     
-    # Initialize base reasoning agent
+    # Initialize and wrap reasoning agent
     base_reasoning_agent = create_react_agent(
         model=ChatDatabricks(endpoint=LLM_ENDPOINT_NAME),
         tools=[],
         name=REASONING,
     )
-
-    # Wrap reasoning agent to ensure message names are set correctly
-    def reasoning_agent(state: OrbitState) -> OrbitState:
-        """Wrapper for reasoning agent that ensures message name attribution."""
-        result = base_reasoning_agent.invoke(state)
-
-        # Ensure all messages from reasoning agent have the correct name attribute
-        messages = result.get("messages", [])
-        if isinstance(messages, list):
-            for msg in messages:
-                # Set name attribute on assistant messages from this agent
-                msg_role = get_msg_attr(msg, 'role')
-                if msg_role == 'assistant':
-                    # Set the name attribute
-                    if hasattr(msg, 'name'):
-                        msg.name = REASONING
-                    elif isinstance(msg, dict):
-                        msg['name'] = REASONING
-
-        return result
+    reasoning_agent = create_named_agent_wrapper(base_reasoning_agent, REASONING)
     
     # Agent descriptions for prompting
     agent_descriptions = "\n".join([
         f"- **{name}**: {agent.description}"
-        for name, agent in genie_agents.items()
+        for name, agent in base_genie_agents.items()
     ])
     
     # Define supervisor routing logic
