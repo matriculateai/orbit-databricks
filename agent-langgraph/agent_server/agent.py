@@ -172,12 +172,32 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
         ),
     }
     
-    # Initialize reasoning agent
-    reasoning_agent = create_react_agent(
+    # Initialize base reasoning agent
+    base_reasoning_agent = create_react_agent(
         model=ChatDatabricks(endpoint=LLM_ENDPOINT_NAME),
         tools=[],
         name=REASONING,
     )
+
+    # Wrap reasoning agent to ensure message names are set correctly
+    def reasoning_agent(state: OrbitState) -> OrbitState:
+        """Wrapper for reasoning agent that ensures message name attribution."""
+        result = base_reasoning_agent.invoke(state)
+
+        # Ensure all messages from reasoning agent have the correct name attribute
+        messages = result.get("messages", [])
+        if isinstance(messages, list):
+            for msg in messages:
+                # Set name attribute on assistant messages from this agent
+                msg_role = get_msg_attr(msg, 'role')
+                if msg_role == 'assistant':
+                    # Set the name attribute
+                    if hasattr(msg, 'name'):
+                        msg.name = REASONING
+                    elif isinstance(msg, dict):
+                        msg['name'] = REASONING
+
+        return result
     
     # Agent descriptions for prompting
     agent_descriptions = "\n".join([
