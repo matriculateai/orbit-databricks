@@ -179,55 +179,6 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
         name=REASONING,
     )
 
-    # Create tagger nodes to add name attributes after agents execute
-    def create_message_tagger(agent_name: str):
-        """Creates a node that tags the last assistant message with the agent name."""
-        def tagger_node(state: OrbitState):
-            messages = state.get("messages", [])
-            if not messages:
-                return state
-
-            # Find the last message and tag it if it's from an AI/assistant
-            last_msg = messages[-1]
-            msg_type = type(last_msg).__name__
-
-            logger.info(f"DEBUG: Tagger {agent_name} processing message type: {msg_type}")
-
-            # Check if this is an AI message (either AIMessage or dict with role='assistant')
-            is_ai_message = (
-                msg_type == 'AIMessage' or
-                (isinstance(last_msg, dict) and last_msg.get('role') == 'assistant')
-            )
-
-            if is_ai_message:
-                # Create a new message dict with the name attribute
-                if isinstance(last_msg, dict):
-                    tagged_msg = last_msg.copy()
-                    tagged_msg['name'] = agent_name
-                else:
-                    # Convert message object to dict
-                    tagged_msg = {
-                        'role': 'assistant',
-                        'content': get_msg_attr(last_msg, 'content', ''),
-                        'name': agent_name
-                    }
-                    # Preserve other attributes
-                    for attr in ['id', 'tool_calls', 'tool_call_id', 'additional_kwargs', 'response_metadata']:
-                        if hasattr(last_msg, attr):
-                            attr_value = getattr(last_msg, attr)
-                            if attr_value:  # Only include non-empty values
-                                tagged_msg[attr] = attr_value
-
-                # Replace the last message with the tagged version
-                new_messages = messages[:-1] + [tagged_msg]
-                logger.info(f"DEBUG: Tagged message from {agent_name}, original name was: {get_msg_attr(last_msg, 'name')}")
-                return {"messages": new_messages}
-
-            logger.warning(f"DEBUG: Tagger {agent_name} skipped tagging - not an AI message")
-            return state
-
-        return tagger_node
-
     # Agent descriptions for prompting
     agent_descriptions = "\n".join([
         f"- **{name}**: {agent.description}"
@@ -255,19 +206,38 @@ def create_orbit_supervisor(workspace_client: Optional[WorkspaceClient] = None):
         
         # Handle returns from workers (don't increment turn)
         msg_name = get_msg_attr(last_message, 'name')
+        msg_type = type(last_message).__name__
         genie_agent_names = ["sales_agent", "stock_agent", "reps_agent", "fallback_agent"]
 
         # Debug logging
-        logger.info(f"DEBUG: last_message type: {type(last_message)}, msg_name: {msg_name}, role: {get_msg_attr(last_message, 'role')}")
+        logger.info(f"DEBUG: last_message type: {msg_type}, msg_name: {msg_name}, role: {get_msg_attr(last_message, 'role')}")
 
-        if msg_name in genie_agent_names:
-            context["last_agent_used"] = msg_name
+        # Check if this is a response from a Genie agent
+        # GenieAgent creates AIMessages with name='query_result'
+        is_genie_response = (
+            msg_name in genie_agent_names or
+            (msg_type == 'AIMessage' and msg_name == 'query_result')
+        )
+
+        if is_genie_response:
+            context["last_agent_used"] = msg_name if msg_name in genie_agent_names else "genie_agent"
+            context["last_routed_to"] = REASONING  # Track that we're routing to reasoning
+            logger.info(f"DEBUG: Detected Genie agent response, routing to REASONING")
             return Command(
                 goto=REASONING,
                 update={"context": context}
             )
-        
-        if msg_name == REASONING:
+
+        # Check if this is a response from the reasoning agent
+        # If we see an AIMessage and we just routed to REASONING, it must be from reasoning agent
+        is_reasoning_response = (
+            msg_name == REASONING or
+            (msg_type == 'AIMessage' and context.get("last_routed_to") == REASONING)
+        )
+
+        if is_reasoning_response:
+            logger.info(f"DEBUG: Detected reasoning agent response, routing to END")
+            context["last_routed_to"] = END
             return Command(goto=END, update={"context": context})
         
         # Process new user input (increment turn only here)
@@ -396,25 +366,18 @@ For example:
         
         return Command(goto=target_agent, update={"context": context})
     
-    # Build graph with tagger nodes
+    # Build graph (simple structure without tagger nodes)
     workflow = StateGraph(OrbitState)
     workflow.add_node(SUPERVISOR, supervisor_node)
 
-    # Add Genie agents and their tagger nodes
+    # Add Genie agents - they return directly to supervisor
     for name, agent in genie_agents.items():
         workflow.add_node(name, agent)
-        tagger_name = f"{name}_tagger"
-        workflow.add_node(tagger_name, create_message_tagger(name))
-        # Route: agent -> tagger -> supervisor
-        workflow.add_edge(name, tagger_name)
-        workflow.add_edge(tagger_name, SUPERVISOR)
+        workflow.add_edge(name, SUPERVISOR)
 
-    # Add reasoning agent and its tagger
+    # Add reasoning agent - returns to supervisor
     workflow.add_node(REASONING, reasoning_agent)
-    reasoning_tagger = f"{REASONING}_tagger"
-    workflow.add_node(reasoning_tagger, create_message_tagger(REASONING))
-    workflow.add_edge(REASONING, reasoning_tagger)
-    workflow.add_edge(reasoning_tagger, SUPERVISOR)
+    workflow.add_edge(REASONING, SUPERVISOR)
 
     workflow.add_edge(START, SUPERVISOR)
 
