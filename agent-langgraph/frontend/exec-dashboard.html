@@ -3,169 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Executive Dashboard | Orbit</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module">
-        import { DatabricksDashboard } from "https://esm.sh/@databricks/aibi-client";
-        window.DatabricksDashboard = DatabricksDashboard;
-    </script>
-</head>
-<body>
-    <div class="app-container">
-        <!-- Sidebar Navigation -->
-        <nav class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="20" cy="20" r="18" stroke="url(#orbit-gradient)" stroke-width="2.5" fill="none"/>
-                        <circle cx="20" cy="20" r="8" fill="url(#orbit-gradient)"/>
-                        <circle cx="20" cy="6" r="3" fill="#6366f1"/>
-                        <defs>
-                            <linearGradient id="orbit-gradient" x1="0" y1="0" x2="40" y2="40">
-                                <stop offset="0%" stop-color="#6366f1"/>
-                                <stop offset="100%" stop-color="#8b5cf6"/>
-                            </linearGradient>
-                        </defs>
-                    </svg>
-                    <span class="logo-text">Orbit</span>
-                </div>
-            </div>
-
-            <div class="nav-section">
-                <a href="/" class="nav-item">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                    <span>Chat</span>
-                </a>
-                <a href="/rep-dashboard.html" class="nav-item">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                    </svg>
-                    <span>Rep Manager</span>
-                </a>
-                <a href="/exec-dashboard.html" class="nav-item active">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 3v18h18"/>
-                        <path d="M18 17V9"/>
-                        <path d="M13 17V5"/>
-                        <path d="M8 17v-3"/>
-                    </svg>
-                    <span>Executive</span>
-                </a>
-            </div>
-
-            <div class="sidebar-footer">
-                <div class="powered-by">
-                    <span class="powered-text">Powered by</span>
-                    <span class="senture-brand">Senture</span>
-                </div>
-            </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main class="main-content">
-            <div class="dashboard-container">
-                <div class="dashboard-header">
-                    <h1>Executive Dashboard</h1>
-                    <p>High-level business metrics and strategic insights</p>
-                </div>
-
-                <div class="dashboard-frame-container" id="dashboard-container">
-                    <div class="dashboard-loading" id="loading-state">
-                        <div class="loading-spinner"></div>
-                        <p id="status-text">Loading dashboard...</p>
-                    </div>
-                </div>
-            </div>
-        </main>
-    </div>
-
+    <title>Orbit - Executive Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        .dashboard-loading {
+        :root {
+            --bg-dark: #0F1115;
+            --surface-dark: #181B21;
+            --primary: #00A3FF;
+            --text-primary: #FFFFFF;
+            --text-secondary: #8B949E;
+            --border: #2D333B;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            height: 60px;
+            background-color: var(--surface-dark);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-weight: 600;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo span {
+            color: var(--primary);
+            font-size: 12px;
+            background: rgba(0, 163, 255, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 24px;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 14px;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        .dashboard-container {
+            flex: 1;
+            background-color: var(--bg-dark);
+            position: relative;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--bg-dark);
+            display: flex;
             align-items: center;
             justify-content: center;
+            flex-direction: column;
             gap: 16px;
-            padding: 60px 20px;
-            height: 100%;
+            z-index: 10;
         }
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--border-color);
-            border-top-color: var(--accent-primary);
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
+
+        .error-message {
+            color: #ff4444;
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        #dashboard-container {
-            min-height: 600px;
-        }
     </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            ORBIT <span>EXECUTIVE</span>
+        </div>
+        <nav class="nav-links">
+            <a href="/" class="nav-link">Home</a>
+            <a href="/rep-dashboard.html" class="nav-link">Rep View</a>
+        </nav>
+    </header>
 
-    <script type="module">
+    <div class="dashboard-container">
+        <div id="loading" class="loading-overlay">
+            <div class="spinner"></div>
+            <div id="status-text" style="color: var(--text-secondary); font-size: 14px;">Loading Dashboard...</div>
+            <div id="error-msg" class="error-message"></div>
+        </div>
+        <iframe id="dashboard-frame" allow="autoplay"></iframe>
+    </div>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const errorMsg = document.getElementById('error-msg');
+        const spinner = document.querySelector('.spinner');
+        const loadingOverlay = document.getElementById('loading');
+        const iframe = document.getElementById('dashboard-frame');
+
         async function initDashboard() {
-            const container = document.getElementById('dashboard-container');
-            const loadingState = document.getElementById('loading-state');
-            const statusText = document.getElementById('status-text');
-
             try {
-                // Get config and token from server
-                statusText.textContent = 'Fetching configuration...';
+                // 1. Get Configuration
                 const configResponse = await fetch('/api/config');
-                if (!configResponse.ok) throw new Error('Failed to fetch config');
                 const config = await configResponse.json();
 
-                const dashboardId = config.execDashboardId;
-                if (!dashboardId) {
-                    statusText.textContent = 'Dashboard ID not configured in app.yaml';
-                    return;
+                if (!config.execDashboardUrl) {
+                    throw new Error('Executive Dashboard URL not configured (ORBIT_EXEC_DASHBOARD_URL)');
                 }
 
-                // Get embed token from server
-                statusText.textContent = 'Authenticating...';
-                const tokenResponse = await fetch('/api/dashboard-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dashboardId })
-                });
-                if (!tokenResponse.ok) throw new Error('Failed to get dashboard token');
-                const tokenData = await tokenResponse.json();
+                // 2. Load Iframe
+                console.log('Loading dashboard from:', config.execDashboardUrl);
+                
+                // Add query params to ensure header is hidden if supported
+                const url = new URL(config.execDashboardUrl);
+                url.searchParams.set('embedded', 'true');
+                url.searchParams.set('hideHeader', 'true'); // Common param for clean view
 
-                // Initialize dashboard
-                statusText.textContent = 'Initializing dashboard...';
+                iframe.src = url.toString();
 
-                const { DatabricksDashboard } = await import("https://esm.sh/@databricks/aibi-client");
+                // 3. Handle Load State
+                iframe.onload = () => {
+                    loadingOverlay.style.display = 'none';
+                    console.log('Dashboard iframe loaded');
+                };
 
-                // Clear loading state
-                loadingState.remove();
-
-                const dashboard = new DatabricksDashboard({
-                    instanceUrl: config.databricksHost,
-                    workspaceId: config.workspaceId,
-                    dashboardId: dashboardId,
-                    token: tokenData.token,
-                    container: container,
-                });
-
-                await dashboard.initialize();
-
-            } catch (error) {
-                console.error('Dashboard initialization error:', error);
-                statusText.textContent = `Error: ${error.message}`;
+            } catch (err) {
+                console.error('Initialization failed:', err);
+                spinner.style.display = 'none';
+                statusText.style.display = 'none';
+                errorMsg.style.display = 'block';
+                errorMsg.textContent = `Error: ${err.message}. Please check your .env configuration.`;
             }
         }
 
+        // Start
         initDashboard();
     </script>
 </body>
