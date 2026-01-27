@@ -72,12 +72,16 @@ class OrbitHandler(SimpleHTTPRequestHandler):
             message = data.get("message", "")
             context = data.get("context")
 
+            print(f"[Frontend] Received message: {message[:50]}...")
+
             backend_payload = {
                 "input": [{"role": "user", "content": message}],
             }
 
             if context:
                 backend_payload["custom_inputs"] = {"context": context}
+
+            print(f"[Frontend] Sending to backend: {BACKEND_URL}")
 
             req = Request(
                 BACKEND_URL,
@@ -88,17 +92,26 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
             with urlopen(req, timeout=300) as response:
                 result = json.loads(response.read().decode("utf-8"))
+                print(f"[Frontend] Backend response keys: {result.keys()}")
 
             # Simple extraction logic
             response_text = ""
             if "output" in result and result["output"]:
                 # Handle MLflow output format
-                 for item in result["output"]:
+                for item in result["output"]:
                     if isinstance(item, dict) and item.get("type") == "text":
-                        response_text += item.get("content", "")
-            
+                        content = item.get("content", "")
+                        # Skip internal node markers
+                        if not content.startswith("<n>") and not content.startswith("__ORBIT_CONTEXT_UPDATE__"):
+                            response_text += content
+
             if not response_text and "message" in result:
                 response_text = result["message"]
+
+            # Fallback if no response text found
+            if not response_text:
+                print(f"[Warning] No response text found in backend result: {result}")
+                response_text = "I apologize, but I couldn't generate a response. Please try again."
 
             new_context = None
             if "custom_outputs" in result:
