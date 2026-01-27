@@ -87,12 +87,21 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
             print(f"[Frontend] Sending to backend: {BACKEND_URL}")
 
+            # Check for authentication token
+            if not DATABRICKS_TOKEN or DATABRICKS_TOKEN == "YOUR_PAT_TOKEN_HERE":
+                print("[Warning] DATABRICKS_TOKEN is not set or is placeholder value")
+                self.send_json_response(
+                    {"error": "Configuration error", "response": "DATABRICKS_TOKEN environment variable is not configured. Please set your Databricks PAT token."},
+                    status=500,
+                )
+                return
+
             # Prepare headers with authentication
             headers = {
                 "Content-Type": "application/json",
+                "Authorization": f"Bearer {DATABRICKS_TOKEN}"
             }
-            if DATABRICKS_TOKEN:
-                headers["Authorization"] = f"Bearer {DATABRICKS_TOKEN}"
+            print(f"[Frontend] Request headers: {', '.join(headers.keys())}")
 
             req = Request(
                 BACKEND_URL,
@@ -103,7 +112,9 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
             with urlopen(req, timeout=300) as response:
                 result = json.loads(response.read().decode("utf-8"))
-                print(f"[Frontend] Backend response keys: {result.keys()}")
+                print(f"[Frontend] Backend response received")
+                print(f"[Frontend] Response keys: {result.keys()}")
+                print(f"[Frontend] Full response: {json.dumps(result, indent=2)}")
 
             # Simple extraction logic
             response_text = ""
@@ -165,15 +176,21 @@ class OrbitHandler(SimpleHTTPRequestHandler):
             )
         except URLError as e:
             print(f"[Error] URL Error: {e}")
+            error_msg = str(e)
+            if "timed out" in error_msg.lower():
+                response_text = "The request timed out. The backend agent may be taking too long to respond."
+            else:
+                response_text = f"Could not connect to backend: {error_msg}"
             self.send_json_response(
-                {"error": str(e), "response": "Could not connect to backend. Please check network connectivity."},
+                {"error": error_msg, "response": response_text},
                 status=500,
             )
         except Exception as e:
             print(f"[Error] Exception in handle_chat: {e}")
+            print(f"[Error] Exception type: {type(e).__name__}")
             traceback.print_exc()
             self.send_json_response(
-                {"error": str(e), "response": "An unexpected error occurred."},
+                {"error": str(e), "response": f"An unexpected error occurred: {str(e)}"},
                 status=500,
             )
 
