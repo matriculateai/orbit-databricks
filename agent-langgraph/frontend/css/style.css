@@ -187,6 +187,7 @@ body {
 /* Chat Container */
 .chat-container {
     flex: 1;
+    min-height: 0; /* Enable proper flex scrolling */
     display: flex;
     flex-direction: column;
     max-width: 1000px;
@@ -217,6 +218,7 @@ body {
 /* Messages Container */
 .messages-container {
     flex: 1;
+    min-height: 0; /* Critical for flex container scrolling */
     overflow-y: auto;
     padding: 32px 0;
     display: flex;
