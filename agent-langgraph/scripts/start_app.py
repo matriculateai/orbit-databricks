@@ -59,9 +59,10 @@ class ProcessManager:
                         self.frontend_ready = True
                     print(f"✓ {name.capitalize()} is ready!")
 
-                    if self.backend_ready and self.frontend_ready:
+                    if self.frontend_ready:
                         print("\n" + "=" * 50)
-                        print("✓ Both frontend and backend are ready!")
+                        print("✓ Orbit frontend is ready!")
+                        print("✓ Using deployed Databricks backend endpoint")
                         print("✓ Orbit is running at http://localhost:8000")
                         print("=" * 50 + "\n")
 
@@ -100,19 +101,16 @@ class ProcessManager:
 
     def cleanup(self):
         print("\n" + "=" * 42)
-        print("Shutting down both processes...")
+        print("Shutting down frontend process...")
         print("=" * 42)
 
-        for proc in [self.backend_process, self.frontend_process]:
-            if proc:
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=5)
-                except (subprocess.TimeoutExpired, Exception):
-                    proc.kill()
+        if self.frontend_process:
+            try:
+                self.frontend_process.terminate()
+                self.frontend_process.wait(timeout=5)
+            except (subprocess.TimeoutExpired, Exception):
+                self.frontend_process.kill()
 
-        if self.backend_log:
-            self.backend_log.close()
         if self.frontend_log:
             self.frontend_log.close()
 
@@ -120,18 +118,19 @@ class ProcessManager:
         load_dotenv(dotenv_path=".env.local", override=True)
 
         # Open log files
-        self.backend_log = open("backend.log", "w", buffering=1)
         self.frontend_log = open("frontend.log", "w", buffering=1)
 
         try:
-            # Start backend on port 8001 (internal)
-            self.backend_process = self.start_process(
-                ["uv", "run", "start-server"],
-                "backend",
-                self.backend_log,
-                BACKEND_READY,
-                env_extra={"BACKEND_PORT": str(BACKEND_PORT)},
+            # Use deployed Databricks endpoint instead of local backend
+            backend_url = os.environ.get(
+                "BACKEND_URL",
+                "https://dbc-2dd00323-bb3d.cloud.databricks.com/serving-endpoints/orbit-multiagent/invocations"
             )
+
+            print(f"Using backend endpoint: {backend_url}")
+
+            # Mark backend as ready since we're not starting it locally
+            self.backend_ready = True
 
             # Start frontend on port 8000 (exposed by Databricks Apps)
             frontend_dir = Path(__file__).parent.parent / "frontend"
@@ -143,7 +142,8 @@ class ProcessManager:
                 cwd=frontend_dir,
                 env_extra={
                     "FRONTEND_PORT": str(FRONTEND_PORT),
-                    "BACKEND_URL": f"http://localhost:{BACKEND_PORT}/invocations",
+                    "BACKEND_URL": backend_url,
+                    "DATABRICKS_TOKEN": os.environ.get("DATABRICKS_TOKEN", ""),
                     # Databricks configuration for dashboard embedding
                     "DATABRICKS_HOST": os.environ.get("DATABRICKS_HOST", ""),
                     "DATABRICKS_WORKSPACE_ID": os.environ.get("DATABRICKS_WORKSPACE_ID", ""),
@@ -154,28 +154,22 @@ class ProcessManager:
             )
 
             print(
-                f"\nMonitoring processes (Backend PID: {self.backend_process.pid}, Frontend PID: {self.frontend_process.pid})\n"
+                f"\nMonitoring frontend process (PID: {self.frontend_process.pid})\n"
             )
 
-            # Wait for failure
+            # Wait for frontend failure
             while not self.failed.is_set():
                 time.sleep(0.1)
-                for proc in [self.backend_process, self.frontend_process]:
-                    if proc.poll() is not None:
-                        self.failed.set()
-                        break
+                if self.frontend_process.poll() is not None:
+                    self.failed.set()
+                    break
 
-            # Determine which failed
-            failed_name = "backend" if self.backend_process.poll() is not None else "frontend"
-            failed_proc = (
-                self.backend_process if failed_name == "backend" else self.frontend_process
-            )
-            exit_code = failed_proc.returncode if failed_proc else 1
+            # Frontend failed
+            exit_code = self.frontend_process.returncode if self.frontend_process else 1
 
             print(
-                f"\n{'=' * 42}\nERROR: {failed_name} process exited with code {exit_code}\n{'=' * 42}"
+                f"\n{'=' * 42}\nERROR: frontend process exited with code {exit_code}\n{'=' * 42}"
             )
-            self.print_logs("backend.log")
             self.print_logs("frontend.log")
             return exit_code
 

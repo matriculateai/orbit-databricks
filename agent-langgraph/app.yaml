@@ -34,3 +34,6 @@ env:
     value: "YOUR_REP_MANAGER_DASHBOARD_ID_HERE"
   - name: ORBIT_EXEC_DASHBOARD_ID
     value: "YOUR_EXEC_DASHBOARD_ID_HERE"
+  # Databricks PAT token for deployed endpoint authentication
+  - name: DATABRICKS_TOKEN
+    value: "YOUR_PAT_TOKEN_HERE"
