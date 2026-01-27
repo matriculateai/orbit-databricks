@@ -15,7 +15,11 @@ from urllib.error import HTTPError, URLError
 
 # Configuration
 FRONTEND_PORT = int(os.environ.get("FRONTEND_PORT", "8000"))
-BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8001/invocations")
+BACKEND_URL = os.environ.get(
+    "BACKEND_URL",
+    "https://dbc-2dd00323-bb3d.cloud.databricks.com/serving-endpoints/orbit-multiagent/invocations"
+)
+DATABRICKS_TOKEN = os.environ.get("DATABRICKS_TOKEN", "")
 
 # Databricks configuration
 DATABRICKS_HOST = os.environ.get("DATABRICKS_HOST", "")
@@ -83,10 +87,17 @@ class OrbitHandler(SimpleHTTPRequestHandler):
 
             print(f"[Frontend] Sending to backend: {BACKEND_URL}")
 
+            # Prepare headers with authentication
+            headers = {
+                "Content-Type": "application/json",
+            }
+            if DATABRICKS_TOKEN:
+                headers["Authorization"] = f"Bearer {DATABRICKS_TOKEN}"
+
             req = Request(
                 BACKEND_URL,
                 data=json.dumps(backend_payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+                headers=headers,
                 method="POST",
             )
 
@@ -122,8 +133,32 @@ class OrbitHandler(SimpleHTTPRequestHandler):
                 "context": new_context,
             })
 
+        except HTTPError as e:
+            error_body = e.read().decode("utf-8") if hasattr(e, 'read') else str(e)
+            print(f"[Error] HTTP Error {e.code}: {error_body}")
+
+            if e.code == 401:
+                error_message = "Authentication failed. Please check DATABRICKS_TOKEN environment variable."
+            elif e.code == 403:
+                error_message = "Access forbidden. Please verify your Databricks permissions."
+            elif e.code == 404:
+                error_message = "Agent endpoint not found. Please verify the endpoint URL."
+            else:
+                error_message = f"Backend error ({e.code}): {error_body[:200]}"
+
+            self.send_json_response(
+                {"error": str(e), "response": error_message},
+                status=500,
+            )
+        except URLError as e:
+            print(f"[Error] URL Error: {e}")
+            self.send_json_response(
+                {"error": str(e), "response": "Could not connect to backend. Please check network connectivity."},
+                status=500,
+            )
         except Exception as e:
             print(f"[Error] Exception in handle_chat: {e}")
+            traceback.print_exc()
             self.send_json_response(
                 {"error": str(e), "response": "An unexpected error occurred."},
                 status=500,
