@@ -108,13 +108,23 @@ class OrbitHandler(SimpleHTTPRequestHandler):
             # Simple extraction logic
             response_text = ""
             if "output" in result and result["output"]:
-                # Handle MLflow output format
+                # Handle both local and deployed endpoint formats
                 for item in result["output"]:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        content = item.get("content", "")
-                        # Skip internal node markers
-                        if not content.startswith("<n>") and not content.startswith("__ORBIT_CONTEXT_UPDATE__"):
-                            response_text += content
+                    if isinstance(item, dict):
+                        # Deployed endpoint format: {"type": "message", "content": [{"text": "...", "type": "output_text"}]}
+                        if item.get("type") == "message" and "content" in item:
+                            for content_item in item["content"]:
+                                if isinstance(content_item, dict) and "text" in content_item:
+                                    text = content_item["text"]
+                                    # Skip internal node markers
+                                    if not text.startswith("<n>") and not text.startswith("__ORBIT_CONTEXT_UPDATE__"):
+                                        response_text += text + "\n"
+                        # Local endpoint format: {"type": "text", "content": "..."}
+                        elif item.get("type") == "text":
+                            content = item.get("content", "")
+                            # Skip internal node markers
+                            if not content.startswith("<n>") and not content.startswith("__ORBIT_CONTEXT_UPDATE__"):
+                                response_text += content
 
             if not response_text and "message" in result:
                 response_text = result["message"]
@@ -123,6 +133,9 @@ class OrbitHandler(SimpleHTTPRequestHandler):
             if not response_text:
                 print(f"[Warning] No response text found in backend result: {result}")
                 response_text = "I apologize, but I couldn't generate a response. Please try again."
+
+            # Clean up extra newlines
+            response_text = response_text.strip()
 
             new_context = None
             if "custom_outputs" in result:
