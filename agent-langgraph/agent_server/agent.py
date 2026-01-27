@@ -47,7 +47,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 mlflow.langchain.autolog()
-sp_workspace_client = WorkspaceClient()
+# sp_workspace_client = WorkspaceClient()  # Only needed if running backend locally
 
 # ==================== CONFIGURATION FROM ENV ====================
 
@@ -370,7 +370,7 @@ async def init_agent(workspace_client: Optional[WorkspaceClient] = None):
     """Initialize or return cached Orbit supervisor agent."""
     global _orbit_agent
     if _orbit_agent is None:
-        _orbit_agent = create_orbit_supervisor(workspace_client or sp_workspace_client)
+        _orbit_agent = create_orbit_supervisor(workspace_client)
     return _orbit_agent
 
 
